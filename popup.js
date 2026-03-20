@@ -123,6 +123,19 @@ btnLoadAuctions.addEventListener('click', () => {
   if (activeTabId) loadAuctions(activeTabId);
 });
 
+// Click "View Cars" on auction page and wait for the car list to load
+async function tryViewCars(tabId) {
+  try {
+    const resp = await sendToContent(tabId, { action: 'viewCars' });
+    if (resp?.clicked) {
+      setStatus('busy', `Открываю список машин (${resp.text})…`);
+      await sleep(2500); // wait for SPA to render car list
+      return true;
+    }
+  } catch (_) {}
+  return false;
+}
+
 auctionSelect.addEventListener('change', async () => {
   const auction = getSelectedAuction();
   if (!auction || !auction.url) return;
@@ -142,8 +155,9 @@ auctionSelect.addEventListener('change', async () => {
     try {
       await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
     } catch (_) {}
-    await sleep(500);
-    setStatus('ok', `Аукцион: ${auction.name}`);
+    await sleep(800);
+    await tryViewCars(tab.id);
+    setStatus('ok', `Аукцион: ${auction.name} — готов к сбору`);
     btnScrape.disabled    = false;
     btnScrapeAll.disabled = false;
   }
@@ -210,9 +224,14 @@ btnScrapeAll.addEventListener('click', async () => {
       try {
         await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
       } catch (_) {}
-      await sleep(1000);
+      await sleep(800);
     }
   }
+
+  // Click "View Cars" if present on the auction landing page
+  setStatus('busy', 'Ищу кнопку "View Cars"…');
+  const clicked = await tryViewCars(activeTabId);
+  if (!clicked) await sleep(500); // short wait even if no button found
 
   setStatus('busy', auction ? `Сканирую "${auction.name}"…` : 'Сканирую все страницы…');
 

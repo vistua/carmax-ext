@@ -200,6 +200,58 @@
   }
 
   /**
+   * Find and click a "View Cars" / "View Vehicles" type button on the auction page.
+   * Returns { clicked, text } — true if a button was found and clicked.
+   */
+  function clickViewCars() {
+    const textPatterns = [
+      /^view\s+cars?$/i,
+      /^view\s+vehicles?$/i,
+      /^view\s+inventory$/i,
+      /^view\s+lots?$/i,
+      /^view\s+all\s+cars?$/i,
+      /^view\s+all\s+vehicles?$/i,
+      /^see\s+cars?$/i,
+      /^browse\s+cars?$/i,
+      /^browse\s+vehicles?$/i,
+      /^shop\s+cars?$/i,
+      /^show\s+cars?$/i,
+      /^show\s+vehicles?$/i,
+      /view\s+cars?/i,
+      /view\s+vehicles?/i,
+      /view\s+inventory/i,
+    ];
+
+    const candidates = Array.from(
+      document.querySelectorAll('button, a, [role="button"], [class*="btn"], [class*="Btn"]')
+    );
+
+    // Priority: exact/short matches first
+    for (const el of candidates) {
+      const text = (el.innerText || el.textContent || '').trim();
+      const label = el.getAttribute('aria-label') || '';
+      const testStr = text || label;
+      for (const pat of textPatterns) {
+        if (pat.test(testStr)) {
+          el.click();
+          return { clicked: true, text: testStr };
+        }
+      }
+    }
+
+    // Fallback: data attributes
+    const dataEl = document.querySelector(
+      '[data-testid*="view-car"], [data-testid*="viewCar"], [data-testid*="view-vehicle"]'
+    );
+    if (dataEl) {
+      dataEl.click();
+      return { clicked: true, text: dataEl.innerText?.trim() || 'view-cars' };
+    }
+
+    return { clicked: false };
+  }
+
+  /**
    * Auto-pagination: clicks "next page" or "load more" if present.
    * Returns true if it navigated.
    */
@@ -355,6 +407,11 @@
 
     if (request.action === 'getAuctions') {
       sendResponse({ auctions: findAuctions(), url: window.location.href });
+    }
+
+    if (request.action === 'viewCars') {
+      const result = clickViewCars();
+      sendResponse(result);
     }
 
     return true; // keep channel open for async
