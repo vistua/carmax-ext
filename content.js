@@ -200,52 +200,71 @@
   }
 
   /**
-   * Find and click a "View Cars" / "View Vehicles" type button on the auction page.
-   * Returns { clicked, text } — true if a button was found and clicked.
+   * Find and click a "View Cars" button on the auction/location page.
+   * Handles CarMax's yellow "View cars" button in the "Next auction" section.
+   * Returns { clicked, text, href }.
    */
   function clickViewCars() {
-    const textPatterns = [
+    // Normalize text for comparison
+    function norm(s) {
+      return (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    const VIEW_CARS_PATTERNS = [
       /^view\s+cars?$/i,
       /^view\s+vehicles?$/i,
       /^view\s+inventory$/i,
       /^view\s+lots?$/i,
-      /^view\s+all\s+cars?$/i,
-      /^view\s+all\s+vehicles?$/i,
+      /^view\s+all$/i,
       /^see\s+cars?$/i,
-      /^browse\s+cars?$/i,
-      /^browse\s+vehicles?$/i,
+      /^browse\s+(cars?|vehicles?)$/i,
       /^shop\s+cars?$/i,
-      /^show\s+cars?$/i,
-      /^show\s+vehicles?$/i,
-      /view\s+cars?/i,
-      /view\s+vehicles?/i,
-      /view\s+inventory/i,
     ];
 
-    const candidates = Array.from(
-      document.querySelectorAll('button, a, [role="button"], [class*="btn"], [class*="Btn"]')
-    );
+    function matches(el) {
+      const text  = norm(el.innerText || el.textContent || '');
+      const label = norm(el.getAttribute('aria-label') || '');
+      return VIEW_CARS_PATTERNS.some(p => p.test(text) || p.test(label));
+    }
 
-    // Priority: exact/short matches first
-    for (const el of candidates) {
-      const text = (el.innerText || el.textContent || '').trim();
-      const label = el.getAttribute('aria-label') || '';
-      const testStr = text || label;
-      for (const pat of textPatterns) {
-        if (pat.test(testStr)) {
-          el.click();
-          return { clicked: true, text: testStr };
+    // 1. Search inside "Next auction" section first (most specific)
+    const nextSection = document.querySelector(
+      '[class*="next-auction"], [class*="NextAuction"], ' +
+      '[class*="upcoming"], [class*="Upcoming"], ' +
+      'section, article, div'
+    );
+    // Walk all sections, find one that contains "Next auction" heading
+    const allSections = Array.from(document.querySelectorAll('section, [class*="section"], [class*="Section"], article, div[class]'));
+    for (const section of allSections) {
+      const heading = section.querySelector('h1,h2,h3,h4');
+      if (heading && /next\s+auction/i.test(heading.innerText || '')) {
+        const btn = Array.from(section.querySelectorAll('button, a, [role="button"]')).find(matches);
+        if (btn) {
+          btn.scrollIntoView({ behavior: 'instant', block: 'center' });
+          btn.click();
+          return { clicked: true, text: (btn.innerText || btn.textContent || '').trim(), href: btn.href || '' };
         }
       }
     }
 
-    // Fallback: data attributes
+    // 2. General search across all clickable elements
+    const candidates = Array.from(
+      document.querySelectorAll('button, a[href], [role="button"]')
+    );
+    const found = candidates.find(matches);
+    if (found) {
+      found.scrollIntoView({ behavior: 'instant', block: 'center' });
+      found.click();
+      return { clicked: true, text: (found.innerText || found.textContent || '').trim(), href: found.href || '' };
+    }
+
+    // 3. data-testid fallback
     const dataEl = document.querySelector(
-      '[data-testid*="view-car"], [data-testid*="viewCar"], [data-testid*="view-vehicle"]'
+      '[data-testid*="view-car"], [data-testid*="viewCar"], [data-testid*="view-vehicle"], [data-testid*="viewVehicle"]'
     );
     if (dataEl) {
       dataEl.click();
-      return { clicked: true, text: dataEl.innerText?.trim() || 'view-cars' };
+      return { clicked: true, text: (dataEl.innerText || '').trim(), href: dataEl.href || '' };
     }
 
     return { clicked: false };

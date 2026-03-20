@@ -123,13 +123,27 @@ btnLoadAuctions.addEventListener('click', () => {
   if (activeTabId) loadAuctions(activeTabId);
 });
 
-// Click "View Cars" on auction page and wait for the car list to load
+// Click "View Cars" on auction page and wait for the car list to load.
+// If the button is a link (<a href>), waits for tab navigation to complete.
 async function tryViewCars(tabId) {
   try {
     const resp = await sendToContent(tabId, { action: 'viewCars' });
     if (resp?.clicked) {
-      setStatus('busy', `Открываю список машин (${resp.text})…`);
-      await sleep(2500); // wait for SPA to render car list
+      const label = resp.text || 'View Cars';
+      setStatus('busy', `Нажимаю "${label}"…`);
+
+      if (resp.href && resp.href.startsWith('http')) {
+        // Button was a link — wait for full page navigation
+        await navigateAndWait(tabId, resp.href);
+        try {
+          await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
+        } catch (_) {}
+        await sleep(800);
+      } else {
+        // SPA transition — just wait for render
+        await sleep(2500);
+      }
+      setStatus('busy', 'Загружаю список машин…');
       return true;
     }
   } catch (_) {}
