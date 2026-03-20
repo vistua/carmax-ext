@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CarMax Auctions Scraper</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-logo">
+        <span class="logo-icon">🚗</span>
+        <span class="logo-text">CarMax Scraper</span>
+      </div>
+      <div class="header-count" id="totalCount">0 авто</div>
+    </header>
+
+    <!-- Status bar -->
+    <div class="status-bar" id="statusBar">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Открыт carmaxauctions.com для начала</span>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+      <button class="btn btn-primary" id="btnScrape" disabled>
+        <span class="btn-icon">⬇</span> Собрать данные
+      </button>
+      <button class="btn btn-secondary" id="btnScrapeAll" disabled title="Автоматически листать страницы">
+        <span class="btn-icon">⟳</span> Все страницы
+      </button>
+    </div>
+
+    <!-- Progress bar (hidden by default) -->
+    <div class="progress-wrap" id="progressWrap" style="display:none">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <span class="progress-text" id="progressText">Страница 1…</span>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-row">
+      <input type="text" class="filter-input" id="filterInput"
+             placeholder="Фильтр: год, марка, модель, VIN…" />
+    </div>
+
+    <!-- Vehicle list -->
+    <div class="vehicle-list" id="vehicleList">
+      <div class="empty-state">
+        <div class="empty-icon">🏁</div>
+        <p>Данных пока нет.<br>Войдите на сайт и нажмите «Собрать данные».</p>
+      </div>
+    </div>
+
+    <!-- Footer actions -->
+    <div class="footer">
+      <button class="btn btn-icon-only" id="btnExportCSV" title="Скачать CSV" disabled>
+        📥 CSV
+      </button>
+      <button class="btn btn-icon-only" id="btnExportJSON" title="Скачать JSON" disabled>
+        📋 JSON
+      </button>
+      <button class="btn btn-icon-only btn-danger" id="btnClear" title="Очистить всё" disabled>
+        🗑 Очистить
+      </button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
