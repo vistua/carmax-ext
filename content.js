@@ -225,11 +225,122 @@
     return false;
   }
 
+  /**
+   * Find available auctions (events/locations) on the current page.
+   * Returns array of { name, url } objects.
+   */
+  function findAuctions() {
+    const auctions = [];
+    const seen = new Set();
+
+    function add(name, url) {
+      const key = name.toLowerCase().trim();
+      if (!key || key.length < 2 || key.length > 80 || seen.has(key)) return;
+      // Skip generic nav labels
+      if (/^(home|about|help|login|sign in|log out|register|dashboard|profile|contact|faq|terms|privacy|back|next|close|menu|search)$/i.test(key)) return;
+      seen.add(key);
+      auctions.push({ name: name.trim(), url: url || '' });
+    }
+
+    // Strategy 1: Links with auction/location/event in href
+    const hrefPatterns = [
+      'a[href*="/auction/"]',
+      'a[href*="/auctions/"]',
+      'a[href*="/location/"]',
+      'a[href*="/locations/"]',
+      'a[href*="/event/"]',
+      'a[href*="/events/"]',
+      'a[href*="/sale/"]',
+    ];
+    for (const sel of hrefPatterns) {
+      document.querySelectorAll(sel).forEach(el => {
+        const name = (el.innerText || el.textContent || '').trim();
+        add(name || el.href, el.href);
+      });
+    }
+
+    // Strategy 2: Elements with auction/location class names
+    if (auctions.length === 0) {
+      const classPatterns = [
+        '[class*="auction-item"] a',
+        '[class*="AuctionItem"] a',
+        '[class*="auction-nav"] a',
+        '[class*="location-nav"] a',
+        '[class*="event-item"] a',
+        '[class*="schedule-item"] a',
+        '[class*="auction-list"] li a',
+        '[class*="location-list"] li a',
+        '[class*="event-list"] li a',
+        '[class*="AuctionList"] a',
+        '[class*="LocationList"] a',
+      ];
+      for (const sel of classPatterns) {
+        document.querySelectorAll(sel).forEach(el => {
+          const name = (el.innerText || el.textContent || '').trim();
+          add(name, el.href);
+        });
+        if (auctions.length > 0) break;
+      }
+    }
+
+    // Strategy 3: Select/option dropdowns for location/auction
+    if (auctions.length === 0) {
+      const selects = document.querySelectorAll(
+        'select[class*="auction"], select[class*="location"], select[id*="auction"], select[id*="location"]'
+      );
+      selects.forEach(sel => {
+        Array.from(sel.options).forEach(opt => {
+          if (opt.value && opt.text && opt.text.trim() !== '') {
+            add(opt.text, opt.value.startsWith('http') ? opt.value : '');
+          }
+        });
+      });
+    }
+
+    // Strategy 4: Tab/button rows for auction sections
+    if (auctions.length === 0) {
+      const tabSels = [
+        '[role="tab"]',
+        '[class*="tab-item"]',
+        '[class*="TabItem"]',
+        '[class*="auction-tab"]',
+        '[class*="location-tab"]',
+      ];
+      for (const sel of tabSels) {
+        document.querySelectorAll(sel).forEach(el => {
+          const name = (el.innerText || el.textContent || '').trim();
+          add(name, el.href || '');
+        });
+        if (auctions.length > 0) break;
+      }
+    }
+
+    // Strategy 5: Extract unique locations from visible vehicle cards
+    if (auctions.length === 0) {
+      const vehicles = scrapeVehicles();
+      if (Array.isArray(vehicles)) {
+        vehicles.forEach(v => {
+          if (v.location) add(v.location, '');
+        });
+      }
+    }
+
+    return auctions;
+  }
+
   // ── Message listener (from popup / background) ────────────────────────────
 
   chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     if (request.action === 'scrape') {
-      const vehicles = scrapeVehicles();
+      let vehicles = scrapeVehicles();
+      // Filter by auction location if requested
+      if (request.auctionFilter && Array.isArray(vehicles)) {
+        const f = request.auctionFilter.toLowerCase();
+        vehicles = vehicles.filter(v =>
+          (v.location || '').toLowerCase().includes(f) ||
+          (v.auctionDate || '').toLowerCase().includes(f)
+        );
+      }
       sendResponse({ vehicles, url: window.location.href, timestamp: new Date().toISOString() });
     }
 
@@ -240,6 +351,10 @@
 
     if (request.action === 'ping') {
       sendResponse({ alive: true, url: window.location.href });
+    }
+
+    if (request.action === 'getAuctions') {
+      sendResponse({ auctions: findAuctions(), url: window.location.href });
     }
 
     return true; // keep channel open for async

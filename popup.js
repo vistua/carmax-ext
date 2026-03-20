@@ -6,6 +6,7 @@ const btnScrapeAll = document.getElementById('btnScrapeAll');
 const btnExportCSV = document.getElementById('btnExportCSV');
 const btnExportJSON= document.getElementById('btnExportJSON');
 const btnClear     = document.getElementById('btnClear');
+const btnLoadAuctions = document.getElementById('btnLoadAuctions');
 const filterInput  = document.getElementById('filterInput');
 const vehicleList  = document.getElementById('vehicleList');
 const totalCount   = document.getElementById('totalCount');
@@ -14,10 +15,13 @@ const statusText   = document.getElementById('statusText');
 const progressWrap = document.getElementById('progressWrap');
 const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
+const auctionSection = document.getElementById('auctionSection');
+const auctionSelect  = document.getElementById('auctionSelect');
 
-let allVehicles = [];
-let activeTabId = null;
-let scraping    = false;
+let allVehicles  = [];
+let activeTabId  = null;
+let scraping     = false;
+let auctionsList = []; // { name, url }
 
 // ── Init ──────────────────────────────────────────────────────────────────
 
@@ -53,6 +57,7 @@ async function pingContentScript(tabId) {
       setStatus('ok', 'Сайт открыт, готов к сбору данных');
       btnScrape.disabled    = false;
       btnScrapeAll.disabled = false;
+      loadAuctions(tabId);
     }
   } catch (e) {
     // Content script not yet injected — inject manually
@@ -61,11 +66,88 @@ async function pingContentScript(tabId) {
       setStatus('ok', 'Скрипт внедрён, готов к сбору данных');
       btnScrape.disabled    = false;
       btnScrapeAll.disabled = false;
+      loadAuctions(tabId);
     } catch (e2) {
       setStatus('error', 'Не удалось подключиться. Обновите страницу.');
     }
   }
 }
+
+// ── Auction selector ──────────────────────────────────────────────────────
+
+async function loadAuctions(tabId) {
+  try {
+    const resp = await sendToContent(tabId, { action: 'getAuctions' });
+    if (!resp?.auctions) return;
+    auctionsList = resp.auctions;
+    renderAuctionSelect();
+  } catch (_) {}
+}
+
+function renderAuctionSelect() {
+  auctionSelect.innerHTML = '<option value="">— Все аукционы —</option>';
+  auctionsList.forEach((a, i) => {
+    const opt = document.createElement('option');
+    opt.value = i;
+    opt.textContent = a.name;
+    auctionSelect.appendChild(opt);
+  });
+  auctionSection.style.display = auctionsList.length > 0 ? 'block' : 'none';
+}
+
+function getSelectedAuction() {
+  const idx = auctionSelect.value;
+  return idx !== '' ? auctionsList[parseInt(idx)] : null;
+}
+
+// Navigate tab to auction URL and wait for load
+function navigateAndWait(tabId, url) {
+  return new Promise((resolve) => {
+    function onUpdated(tid, changeInfo) {
+      if (tid === tabId && changeInfo.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+        resolve();
+      }
+    }
+    chrome.tabs.onUpdated.addListener(onUpdated);
+    chrome.tabs.update(tabId, { url });
+    // Safety timeout
+    setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(onUpdated);
+      resolve();
+    }, 8000);
+  });
+}
+
+btnLoadAuctions.addEventListener('click', () => {
+  if (activeTabId) loadAuctions(activeTabId);
+});
+
+auctionSelect.addEventListener('change', async () => {
+  const auction = getSelectedAuction();
+  if (!auction || !auction.url) return;
+
+  // Navigate tab to auction URL if it has one
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab) return;
+  const currentUrl = tab.url || '';
+  const targetUrl  = auction.url;
+
+  if (targetUrl && !currentUrl.startsWith(targetUrl) && targetUrl !== currentUrl) {
+    setStatus('busy', `Перехожу к аукциону "${auction.name}"…`);
+    btnScrape.disabled    = true;
+    btnScrapeAll.disabled = true;
+    await navigateAndWait(tab.id, targetUrl);
+    // Re-inject content script after navigation
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+    } catch (_) {}
+    await sleep(500);
+    setStatus('ok', `Аукцион: ${auction.name}`);
+    btnScrape.disabled    = false;
+    btnScrapeAll.disabled = false;
+  }
+});
 
 // ── Scrape current page ───────────────────────────────────────────────────
 
@@ -77,8 +159,11 @@ btnScrape.addEventListener('click', async () => {
 async function scrapePage(tabId) {
   setScraping(true);
   setStatus('busy', 'Сканирую страницу…');
+  const auction = getSelectedAuction();
   try {
-    const resp = await sendToContent(tabId, { action: 'scrape' });
+    const msg = { action: 'scrape' };
+    if (auction && !auction.url) msg.auctionFilter = auction.name;
+    const resp = await sendToContent(tabId, msg);
     if (!resp) throw new Error('Нет ответа от страницы');
 
     const vehicles = resp.vehicles;
@@ -113,16 +198,34 @@ btnScrapeAll.addEventListener('click', async () => {
   if (scraping || !activeTabId) return;
   setScraping(true);
   showProgress(true);
-  setStatus('busy', 'Сканирую все страницы…');
+
+  const auction = getSelectedAuction();
+
+  // If selected auction has a URL, navigate there first
+  if (auction?.url) {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (tab && tab.url !== auction.url && !tab.url.startsWith(auction.url)) {
+      setStatus('busy', `Перехожу к аукциону "${auction.name}"…`);
+      await navigateAndWait(tab.id, auction.url);
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.js'] });
+      } catch (_) {}
+      await sleep(1000);
+    }
+  }
+
+  setStatus('busy', auction ? `Сканирую "${auction.name}"…` : 'Сканирую все страницы…');
 
   let page = 1;
   let moved = true;
+  const scrapeMsg = { action: 'scrape' };
+  if (auction && !auction.url) scrapeMsg.auctionFilter = auction.name;
 
   while (moved) {
     setProgressText(`Страница ${page}…`);
     setProgressFill(Math.min(page * 10, 90));
 
-    const resp = await sendToContent(activeTabId, { action: 'scrape' });
+    const resp = await sendToContent(activeTabId, scrapeMsg);
     const vehicles = resp?.vehicles;
 
     if (Array.isArray(vehicles) && vehicles.length > 0) {
@@ -146,7 +249,8 @@ btnScrapeAll.addEventListener('click', async () => {
   updateCount();
   setFooterEnabled(true);
   setProgressFill(100);
-  setStatus('ok', `Готово! Всего ${allVehicles.length} авто за ${page} стр.`);
+  const auctionLabel = auction ? ` (${auction.name})` : '';
+  setStatus('ok', `Готово!${auctionLabel} Всего ${allVehicles.length} авто за ${page} стр.`);
   setScraping(false);
   setTimeout(() => showProgress(false), 1500);
 });

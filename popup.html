@@ -23,6 +23,17 @@
       <span id="statusText">Открыт carmaxauctions.com для начала</span>
     </div>
 
+    <!-- Auction selector -->
+    <div class="auction-section" id="auctionSection" style="display:none">
+      <div class="auction-row">
+        <span class="auction-label">Аукцион:</span>
+        <select class="auction-select" id="auctionSelect">
+          <option value="">— Все аукционы —</option>
+        </select>
+        <button class="btn btn-refresh" id="btnLoadAuctions" title="Обновить список аукционов">↻</button>
+      </div>
+    </div>
+
     <!-- Controls -->
     <div class="controls">
       <button class="btn btn-primary" id="btnScrape" disabled>
