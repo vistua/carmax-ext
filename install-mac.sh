@@ -16,10 +16,10 @@ UPDATER
 chmod +x "$HOME/carmax-update.sh"
 echo "💾 Сохранён ~/carmax-update.sh"
 
-echo "🔄 Загружаю расширение в Chrome..."
+echo "🔄 Устанавливаю расширение в Chrome..."
 FULL_EXT="$(cd "$EXT" && pwd)"
 
-# Включаем developer mode в настройках Chrome
+# Включаем developer mode в настройках Chrome (до запуска)
 CHROME_PREFS="$HOME/Library/Application Support/Google/Chrome/Default/Preferences"
 if [ -f "$CHROME_PREFS" ]; then
   python3 -c "
@@ -27,38 +27,93 @@ import json
 with open('$CHROME_PREFS', 'r', encoding='utf-8') as f: p = json.load(f)
 p.setdefault('extensions', {})['developer_mode'] = True
 with open('$CHROME_PREFS', 'w', encoding='utf-8') as f: json.dump(p, f)
-" 2>/dev/null && echo "✅ Developer mode включён в настройках Chrome" || true
+" 2>/dev/null || true
 fi
 
-# Копируем путь в буфер обмена и открываем страницу расширений
-echo -n "$FULL_EXT" | pbcopy 2>/dev/null || true
-open -a "Google Chrome" "chrome://extensions/" 2>/dev/null || true
-sleep 2
+# Пробуем полностью автоматически через JS + System Events (без закрытия Chrome)
+RESULT=$(osascript 2>&1 << APPLESCRIPT
+set extPath to "$FULL_EXT"
 
-# Пробуем включить dev mode и кликнуть "Load unpacked" через JavaScript
-osascript << APPLESCRIPT 2>/dev/null || true
 tell application "Google Chrome"
-  delay 2
+  activate
+  -- Ищем или открываем вкладку extensions
+  set found to false
+  repeat with w in windows
+    repeat with t in tabs of w
+      if URL of t starts with "chrome://extensions" then
+        set active tab of w to t
+        set index of w to 1
+        set found to true
+        exit repeat
+      end if
+    end repeat
+    if found then exit repeat
+  end repeat
+  if not found then
+    open location "chrome://extensions/"
+  end if
+  delay 3
+
+  -- Включаем dev mode
   tell active tab of front window
     execute javascript "
-      try {
-        var m = document.querySelector('extensions-manager');
-        var tb = m.shadowRoot.querySelector('extensions-toolbar');
-        var t = tb.shadowRoot.querySelector('cr-toggle');
-        if (t && t.getAttribute('aria-checked') !== 'true') t.click();
-        setTimeout(function() {
-          var b = tb.shadowRoot.querySelector('#loadUnpacked');
-          if (b) b.click();
-        }, 800);
-      } catch(e) {}
-    "
+      (function(){
+        try{
+          var m=document.querySelector('extensions-manager');
+          var tb=m.shadowRoot.querySelector('extensions-toolbar');
+          var t=tb.shadowRoot.querySelector('cr-toggle');
+          if(t&&t.getAttribute('aria-checked')!=='true')t.click();
+          return 'ok';
+        }catch(e){return 'err:'+e;}
+      })()"
+  end tell
+  delay 1
+
+  -- Кликаем Load unpacked
+  tell active tab of front window
+    execute javascript "
+      (function(){
+        try{
+          var m=document.querySelector('extensions-manager');
+          var tb=m.shadowRoot.querySelector('extensions-toolbar');
+          var b=tb.shadowRoot.querySelector('#loadUnpacked');
+          if(b){b.click();return 'clicked';}
+          return 'no-btn';
+        }catch(e){return 'err:'+e;}
+      })()"
   end tell
 end tell
-APPLESCRIPT
 
-echo "✅ Путь скопирован в буфер: $FULL_EXT"
-echo ""
-echo "📌 Если Chrome не открыл диалог автоматически:"
-echo "   1. Включи 'Режим разработчика' (переключатель вверху справа)"
-echo "   2. Нажми 'Загрузить распакованное'"
-echo "   3. В диалоге нажми Cmd+Shift+G → Cmd+V → Enter → Enter"
+delay 2
+
+-- Навигация в файловом диалоге через System Events
+tell application "System Events"
+  keystroke "g" using {command down, shift down}
+  delay 1
+  keystroke extPath
+  delay 0.5
+  key code 36
+  delay 1
+  key code 36
+end tell
+return "success"
+APPLESCRIPT
+)
+
+if echo "$RESULT" | grep -q "success"; then
+  echo "🎉 Расширение установлено автоматически!"
+else
+  # Fallback: graceful quit + relaunch с --load-extension (вкладки сохранятся)
+  echo "⏸  Перезапускаю Chrome (вкладки сохранятся и восстановятся)..."
+  osascript -e 'tell application "Google Chrome" to quit' 2>/dev/null || true
+  for i in {1..20}; do pgrep -qf "Google Chrome" || break; sleep 1; done
+  CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  [ ! -f "$CHROME_BIN" ] && CHROME_BIN="$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+  if [ -f "$CHROME_BIN" ]; then
+    "$CHROME_BIN" --load-extension="$FULL_EXT" &>/dev/null &
+    disown
+    echo "🎉 Chrome перезапускается с расширением. Вкладки восстановятся автоматически."
+  else
+    echo "❌ Chrome не найден. Путь: $FULL_EXT"
+  fi
+fi
