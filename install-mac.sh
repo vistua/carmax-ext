@@ -30,22 +30,35 @@ with open('$CHROME_PREFS', 'w', encoding='utf-8') as f: json.dump(p, f)
 " 2>/dev/null && echo "✅ Developer mode включён в настройках Chrome" || true
 fi
 
-# Закрываем все процессы Chrome
-osascript -e 'tell application "Google Chrome" to quit' 2>/dev/null || true
+# Копируем путь в буфер обмена и открываем страницу расширений
+echo -n "$FULL_EXT" | pbcopy 2>/dev/null || true
+open -a "Google Chrome" "chrome://extensions/" 2>/dev/null || true
 sleep 2
-pkill -f "Google Chrome" 2>/dev/null || true
-sleep 3
 
-# Запускаем Chrome бинарником напрямую с --load-extension
-CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-[ ! -f "$CHROME_BIN" ] && CHROME_BIN="$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+# Пробуем включить dev mode и кликнуть "Load unpacked" через JavaScript
+osascript << APPLESCRIPT 2>/dev/null || true
+tell application "Google Chrome"
+  delay 2
+  tell active tab of front window
+    execute javascript "
+      try {
+        var m = document.querySelector('extensions-manager');
+        var tb = m.shadowRoot.querySelector('extensions-toolbar');
+        var t = tb.shadowRoot.querySelector('cr-toggle');
+        if (t && t.getAttribute('aria-checked') !== 'true') t.click();
+        setTimeout(function() {
+          var b = tb.shadowRoot.querySelector('#loadUnpacked');
+          if (b) b.click();
+        }, 800);
+      } catch(e) {}
+    "
+  end tell
+end tell
+APPLESCRIPT
 
-if [ -f "$CHROME_BIN" ]; then
-  "$CHROME_BIN" --load-extension="$FULL_EXT" "chrome://extensions/" &>/dev/null &
-  disown
-  echo "🎉 Готово! Chrome запускается с расширением."
-  echo "   Если появится диалог 'Отключить расширения...' — нажми 'Оставить'."
-else
-  echo "⚠️  Chrome не найден. Установи вручную:"
-  echo "   chrome://extensions/ → Режим разработчика → Загрузить распакованное → $FULL_EXT"
-fi
+echo "✅ Путь скопирован в буфер: $FULL_EXT"
+echo ""
+echo "📌 Если Chrome не открыл диалог автоматически:"
+echo "   1. Включи 'Режим разработчика' (переключатель вверху справа)"
+echo "   2. Нажми 'Загрузить распакованное'"
+echo "   3. В диалоге нажми Cmd+Shift+G → Cmd+V → Enter → Enter"
