@@ -4,11 +4,14 @@
 
 'use strict';
 
+importScripts('error-handler.js');
+
 const STORAGE_KEY = 'carmax_vehicles';
 
 // ── Listen for messages from popup or content scripts ─────────────────────
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  try {
 
   if (message.action === 'pageChanged') {
     // SPA navigation detected — nothing to do automatically
@@ -37,6 +40,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse({ csv });
     });
     return true;
+  }
+
+  } catch (e) {
+    carmaxError.capture(e, { action: message.action, context: 'background' });
+    sendResponse({ error: e.message });
   }
 });
 

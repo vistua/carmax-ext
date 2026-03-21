@@ -68,6 +68,7 @@ async function pingContentScript(tabId) {
       btnScrapeAll.disabled = false;
       loadAuctions(tabId);
     } catch (e2) {
+      carmaxError.capture(e2, { action: 'injectContentScript', tabId });
       setStatus('error', 'Не удалось подключиться. Обновите страницу.');
     }
   }
@@ -215,6 +216,7 @@ async function scrapePage(tabId) {
     setFooterEnabled(true);
     setStatus('ok', `Собрано ${vehicles.length} авто с этой страницы`);
   } catch (e) {
+    carmaxError.capture(e, { action: 'scrapePage', tabId });
     setStatus('error', `Ошибка: ${e.message}`);
   }
   setScraping(false);

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>CarMax Auctions — Mock Page</title>
+</head>
+<body>
+  <!-- Mock vehicle cards matching content.js SELECTORS.vehicleCard patterns -->
+
+  <div class="vehicle-card" data-testid="vehicle-1">
+    <span class="vin">1HGBH41JXMN109186</span>
+    <span class="year">2022</span>
+    <span class="make">Honda</span>
+    <span class="model">Civic</span>
+    <span class="trim">EX</span>
+    <span class="price">$18,500</span>
+    <span class="mileage">24,000 mi</span>
+    <span class="auction-date">2026-04-10</span>
+    <span class="location">Atlanta, GA</span>
+    <span class="condition">Clean</span>
+    <span class="color">Silver</span>
+    <a href="/vehicle/123">View</a>
+  </div>
+
+  <div class="vehicle-card" data-testid="vehicle-2">
+    <span class="vin">2T1BURHE0JC043821</span>
+    <span class="year">2021</span>
+    <span class="make">Toyota</span>
+    <span class="model">Corolla</span>
+    <span class="trim">LE</span>
+    <span class="price">$16,200</span>
+    <span class="mileage">31,000 mi</span>
+    <span class="auction-date">2026-04-10</span>
+    <span class="location">Dallas, TX</span>
+    <span class="condition">Clean</span>
+    <span class="color">White</span>
+    <a href="/vehicle/456">View</a>
+  </div>
+
+  <!-- Pagination: no "next page" button → scrapeAll stops after page 1 -->
+</body>
+</html>
