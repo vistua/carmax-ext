@@ -10,13 +10,9 @@ cp "$0" "$HOME/carmax-update.sh" 2>/dev/null && chmod +x "$HOME/carmax-update.sh
 osascript << 'AS'
 tell application "Google Chrome"
   activate
-  tell front window
-    make new tab with properties {URL:"chrome://extensions/"}
-  end tell
-  delay 2
-  tell current tab of front window
-    execute javascript "var m=document.querySelector('extensions-manager');var tb=m&&m.shadowRoot?m.shadowRoot.querySelector('extensions-toolbar'):null;var dm=tb&&tb.shadowRoot?tb.shadowRoot.querySelector('#devMode'):null;if(dm&&!dm.checked){dm.click();}setTimeout(function(){var items=m&&m.shadowRoot?m.shadowRoot.querySelectorAll('extensions-item'):[];for(var i=0;i<items.length;i++){var name=items[i].shadowRoot?items[i].shadowRoot.querySelector('#name'):null;if(name&&name.textContent.indexOf('CarMax')>=0){var btn=items[i].shadowRoot.querySelector('#reload-button');if(btn)btn.click();}}},800);"
-  end tell
+  set extTab to make new tab at end of tabs of front window with properties {URL:"chrome://extensions/"}
+  delay 3
+  execute javascript "var m=document.querySelector('extensions-manager');var tb=m&&m.shadowRoot?m.shadowRoot.querySelector('extensions-toolbar'):null;var dm=tb&&tb.shadowRoot?tb.shadowRoot.querySelector('#devMode'):null;if(dm&&!dm.checked){dm.click();}setTimeout(function(){var items=m&&m.shadowRoot?m.shadowRoot.querySelectorAll('extensions-item'):[];for(var i=0;i<items.length;i++){var n=items[i].shadowRoot?items[i].shadowRoot.querySelector('#name'):null;if(n&&n.textContent.indexOf('CarMax')>=0){var b=items[i].shadowRoot.querySelector('#reload-button');if(b)b.click();}}},800);" in extTab
 end tell
 AS
 echo "🎉 Готово!"
