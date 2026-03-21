@@ -18,83 +18,32 @@ echo "💾 Сохранён ~/carmax-update.sh"
 
 echo "🔄 Устанавливаю расширение в Chrome..."
 FULL_EXT="$(cd "$EXT" && pwd)"
-CHROME_PREFS="$HOME/Library/Application Support/Google/Chrome/Default/Preferences"
 CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 [ ! -f "$CHROME_BIN" ] && CHROME_BIN="$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
-# Gracefully quit Chrome so it saves the session
-CHROME_WAS_RUNNING=false
-if pgrep -qf "Google Chrome"; then
-  CHROME_WAS_RUNNING=true
-  echo "⏸  Сохраняю сессию Chrome..."
+if [ ! -f "$CHROME_BIN" ]; then
+  echo "❌ Chrome не найден"
+  exit 1
+fi
+
+# Gracefully quit Chrome so it saves session to disk
+RESTORE_FLAG=""
+if pgrep -qf "Google Chrome" 2>/dev/null; then
+  echo "⏸  Закрываю Chrome (сессия сохраняется)..."
   osascript -e 'tell application "Google Chrome" to quit' 2>/dev/null || true
-  for i in {1..30}; do pgrep -qf "Google Chrome" || break; sleep 1; done
-  sleep 1
+  sleep 2
+  for i in $(seq 1 30); do
+    pgrep -qf "Google Chrome" 2>/dev/null || break
+    sleep 1
+  done
+  sleep 2
+  RESTORE_FLAG="--restore-last-session"
 fi
 
-# Inject extension directly into Chrome Preferences (bypasses --load-extension issues)
-python3 - "$FULL_EXT" "$CHROME_PREFS" << 'PYEOF'
-import json, hashlib, os, sys, time
+# Launch Chrome fresh with extension — works only when no Chrome process is running
+echo "🚀 Запускаю Chrome с расширением..."
+"$CHROME_BIN" --load-extension="$FULL_EXT" $RESTORE_FLAG &>/dev/null &
+disown
 
-ext_path = sys.argv[1]
-prefs_path = sys.argv[2]
-
-def compute_ext_id(path):
-    h = hashlib.sha256(path.encode('utf-8')).digest()[:16]
-    return ''.join(chr(ord('a') + (b >> 4)) + chr(ord('a') + (b & 0xf)) for b in h)
-
-ext_id = compute_ext_id(ext_path)
-print("Extension ID:", ext_id)
-
-with open(os.path.join(ext_path, 'manifest.json'), 'r') as f:
-    manifest = json.load(f)
-
-if os.path.exists(prefs_path):
-    with open(prefs_path, 'r', encoding='utf-8') as f:
-        prefs = json.load(f)
-else:
-    prefs = {}
-
-prefs.setdefault('extensions', {})
-prefs['extensions']['developer_mode'] = True
-prefs['extensions'].setdefault('settings', {})
-
-install_time = str(int((time.time() + 11644473600) * 1000000))
-
-prefs['extensions']['settings'][ext_id] = {
-    "active_permissions": {
-        "api": manifest.get("permissions", []),
-        "explicit_host": manifest.get("host_permissions", []),
-        "manifest_permissions": [],
-        "scriptable_host": []
-    },
-    "creation_flags": 9,
-    "from_webstore": False,
-    "install_time": install_time,
-    "location": 4,
-    "manifest": manifest,
-    "path": ext_path,
-    "state": 1
-}
-
-with open(prefs_path, 'w', encoding='utf-8') as f:
-    json.dump(prefs, f)
-
-print("Preferences updated successfully")
-PYEOF
-
-if [ $? -eq 0 ]; then
-  if [ -f "$CHROME_BIN" ]; then
-    if [ "$CHROME_WAS_RUNNING" = true ]; then
-      "$CHROME_BIN" --restore-last-session &>/dev/null &
-    else
-      "$CHROME_BIN" &>/dev/null &
-    fi
-    disown
-    echo "🎉 Готово! Расширение установлено, Chrome запущен, все вкладки восстановлены."
-  else
-    echo "✅ Расширение добавлено. Откройте Chrome — расширение появится автоматически."
-  fi
-else
-  echo "❌ Ошибка при установке. Проверьте, что Python3 доступен."
-fi
+echo "🎉 Готово! CarMax Auctions Scraper установлен."
+echo "   Проверьте иконку 🧩 в правом верхнем углу Chrome."
