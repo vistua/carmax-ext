@@ -18,102 +18,83 @@ echo "💾 Сохранён ~/carmax-update.sh"
 
 echo "🔄 Устанавливаю расширение в Chrome..."
 FULL_EXT="$(cd "$EXT" && pwd)"
-
-# Включаем developer mode в настройках Chrome (до запуска)
 CHROME_PREFS="$HOME/Library/Application Support/Google/Chrome/Default/Preferences"
-if [ -f "$CHROME_PREFS" ]; then
-  python3 -c "
-import json
-with open('$CHROME_PREFS', 'r', encoding='utf-8') as f: p = json.load(f)
-p.setdefault('extensions', {})['developer_mode'] = True
-with open('$CHROME_PREFS', 'w', encoding='utf-8') as f: json.dump(p, f)
-" 2>/dev/null || true
+CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+[ ! -f "$CHROME_BIN" ] && CHROME_BIN="$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+
+# Gracefully quit Chrome so it saves the session
+CHROME_WAS_RUNNING=false
+if pgrep -qf "Google Chrome"; then
+  CHROME_WAS_RUNNING=true
+  echo "⏸  Сохраняю сессию Chrome..."
+  osascript -e 'tell application "Google Chrome" to quit' 2>/dev/null || true
+  for i in {1..30}; do pgrep -qf "Google Chrome" || break; sleep 1; done
+  sleep 1
 fi
 
-# Пробуем полностью автоматически через JS + System Events (без закрытия Chrome)
-RESULT=$(osascript 2>&1 << APPLESCRIPT
-set extPath to "$FULL_EXT"
+# Inject extension directly into Chrome Preferences (bypasses --load-extension issues)
+python3 - "$FULL_EXT" "$CHROME_PREFS" << 'PYEOF'
+import json, hashlib, os, sys, time
 
-tell application "Google Chrome"
-  activate
-  -- Ищем или открываем вкладку extensions
-  set found to false
-  repeat with w in windows
-    repeat with t in tabs of w
-      if URL of t starts with "chrome://extensions" then
-        set active tab of w to t
-        set index of w to 1
-        set found to true
-        exit repeat
-      end if
-    end repeat
-    if found then exit repeat
-  end repeat
-  if not found then
-    open location "chrome://extensions/"
-  end if
-  delay 3
+ext_path = sys.argv[1]
+prefs_path = sys.argv[2]
 
-  -- Включаем dev mode
-  tell active tab of front window
-    execute javascript "
-      (function(){
-        try{
-          var m=document.querySelector('extensions-manager');
-          var tb=m.shadowRoot.querySelector('extensions-toolbar');
-          var t=tb.shadowRoot.querySelector('cr-toggle');
-          if(t&&t.getAttribute('aria-checked')!=='true')t.click();
-          return 'ok';
-        }catch(e){return 'err:'+e;}
-      })()"
-  end tell
-  delay 1
+def compute_ext_id(path):
+    h = hashlib.sha256(path.encode('utf-8')).digest()[:16]
+    return ''.join(chr(ord('a') + (b >> 4)) + chr(ord('a') + (b & 0xf)) for b in h)
 
-  -- Кликаем Load unpacked
-  tell active tab of front window
-    execute javascript "
-      (function(){
-        try{
-          var m=document.querySelector('extensions-manager');
-          var tb=m.shadowRoot.querySelector('extensions-toolbar');
-          var b=tb.shadowRoot.querySelector('#loadUnpacked');
-          if(b){b.click();return 'clicked';}
-          return 'no-btn';
-        }catch(e){return 'err:'+e;}
-      })()"
-  end tell
-end tell
+ext_id = compute_ext_id(ext_path)
+print("Extension ID:", ext_id)
 
-delay 2
+with open(os.path.join(ext_path, 'manifest.json'), 'r') as f:
+    manifest = json.load(f)
 
--- Навигация в файловом диалоге через System Events
-tell application "System Events"
-  keystroke "g" using {command down, shift down}
-  delay 1
-  keystroke extPath
-  delay 0.5
-  key code 36
-  delay 1
-  key code 36
-end tell
-return "success"
-APPLESCRIPT
-)
+if os.path.exists(prefs_path):
+    with open(prefs_path, 'r', encoding='utf-8') as f:
+        prefs = json.load(f)
+else:
+    prefs = {}
 
-if echo "$RESULT" | grep -q "success"; then
-  echo "🎉 Расширение установлено автоматически!"
-else
-  # Fallback: graceful quit + relaunch с --load-extension (вкладки сохранятся)
-  echo "⏸  Перезапускаю Chrome (вкладки сохранятся и восстановятся)..."
-  osascript -e 'tell application "Google Chrome" to quit' 2>/dev/null || true
-  for i in {1..20}; do pgrep -qf "Google Chrome" || break; sleep 1; done
-  CHROME_BIN="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-  [ ! -f "$CHROME_BIN" ] && CHROME_BIN="$HOME/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+prefs.setdefault('extensions', {})
+prefs['extensions']['developer_mode'] = True
+prefs['extensions'].setdefault('settings', {})
+
+install_time = str(int((time.time() + 11644473600) * 1000000))
+
+prefs['extensions']['settings'][ext_id] = {
+    "active_permissions": {
+        "api": manifest.get("permissions", []),
+        "explicit_host": manifest.get("host_permissions", []),
+        "manifest_permissions": [],
+        "scriptable_host": []
+    },
+    "creation_flags": 9,
+    "from_webstore": False,
+    "install_time": install_time,
+    "location": 4,
+    "manifest": manifest,
+    "path": ext_path,
+    "state": 1
+}
+
+with open(prefs_path, 'w', encoding='utf-8') as f:
+    json.dump(prefs, f)
+
+print("Preferences updated successfully")
+PYEOF
+
+if [ $? -eq 0 ]; then
   if [ -f "$CHROME_BIN" ]; then
-    "$CHROME_BIN" --load-extension="$FULL_EXT" &>/dev/null &
+    if [ "$CHROME_WAS_RUNNING" = true ]; then
+      "$CHROME_BIN" --restore-last-session &>/dev/null &
+    else
+      "$CHROME_BIN" &>/dev/null &
+    fi
     disown
-    echo "🎉 Chrome перезапускается с расширением. Вкладки восстановятся автоматически."
+    echo "🎉 Готово! Расширение установлено, Chrome запущен, все вкладки восстановлены."
   else
-    echo "❌ Chrome не найден. Путь: $FULL_EXT"
+    echo "✅ Расширение добавлено. Откройте Chrome — расширение появится автоматически."
   fi
+else
+  echo "❌ Ошибка при установке. Проверьте, что Python3 доступен."
 fi
