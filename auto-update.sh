@@ -13,6 +13,7 @@ if [ "$CURRENT_HASH" != "$STORED_HASH" ]; then
   curl -sf "$INSTALL_URL" | bash
   echo "$CURRENT_HASH" > "$HASH_FILE"
   echo "✅ Обновлено $(date)"
+  osascript -e 'display notification "Расширение CarMax обновлено ✅" with title "CarMax Extension" sound name "Glass"'
 else
   echo "✅ Уже актуально $(date)"
 fi
