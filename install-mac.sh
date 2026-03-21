@@ -15,7 +15,7 @@ tell application "Google Chrome"
   repeat with w in windows
     repeat with t in tabs of w
       if URL of t starts with "chrome://extensions" then
-        set active tab of w to t
+        set current tab of w to t
         set index of w to 1
         set foundExt to true
         exit repeat
@@ -24,11 +24,11 @@ tell application "Google Chrome"
     if foundExt then exit repeat
   end repeat
   if foundExt then
-    tell active tab of front window
+    tell current tab of front window
       execute javascript "location.reload()"
     end tell
     delay 1
-    tell active tab of front window
+    tell current tab of front window
       execute javascript "
         document.querySelector('extensions-manager')?.shadowRoot
           ?.querySelectorAll('extensions-item')
@@ -43,7 +43,7 @@ tell application "Google Chrome"
       make new tab with properties {URL: "chrome://extensions/"}
     end tell
     delay 2
-    tell active tab of front window
+    tell current tab of front window
       execute javascript "
         const m=document.querySelector('extensions-manager');
         const tb=m?.shadowRoot?.querySelector('extensions-toolbar');
@@ -52,7 +52,7 @@ tell application "Google Chrome"
       "
     end tell
     delay 0.5
-    tell active tab of front window
+    tell current tab of front window
       execute javascript "
         document.querySelector('extensions-manager')?.shadowRoot
           ?.querySelector('extensions-toolbar')?.shadowRoot
